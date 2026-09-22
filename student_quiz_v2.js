@@ -201,28 +201,12 @@
     quizOverlayEl.addEventListener('click', (e) => {
         if (e.target === quizOverlayEl) closeOverlay();
     });
-    // Global key handler: works no matter which element has focus
-    const escHandler = (e) => {
-        if (e.key === 'Escape') { closeOverlay(); return; }
-        if (e.key !== 'Enter' || e.repeat) return;
-        if (!awaitingGuess) {
-            // Already answered: Enter always means Next
-            e.preventDefault();
-            nextStudent();
-        } else if (document.activeElement === nameInput) {
-            e.preventDefault();
-            checkAnswer();
-        } else if (!document.activeElement?.closest?.('#' + QUIZ_OVERLAY_ID + ' button')) {
-            // Focus got lost somewhere: bring it back to the text field
-            e.preventDefault();
-            nameInput.focus();
-        }
-    };
-    document.addEventListener('keydown', escHandler, true);
+    const escHandler = (e) => { if (e.key === 'Escape') closeOverlay(); };
+    document.addEventListener('keydown', escHandler);
     let autoNextTimer = null;
     function closeOverlay() {
         clearTimeout(autoNextTimer);
-        document.removeEventListener('keydown', escHandler, true);
+        document.removeEventListener('keydown', escHandler);
         quizOverlayEl.remove();
     }
 
@@ -589,8 +573,14 @@
         nameInput.focus(); nameInput.select();
     });
 
-    // Clicking in the name panel must not steal keyboard focus from the text field
-    namesGridEl.addEventListener('mousedown', (e) => e.preventDefault());
+    // Enter in the text field: Guess while unanswered, otherwise Next.
+    // Buttons keep the browser's normal behaviour: Enter activates the focused button only.
+    nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (awaitingGuess) checkAnswer(); else nextStudent();
+        }
+    });
 
     // ==== Start ===============================================================
     renderNameGrid();
