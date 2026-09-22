@@ -131,6 +131,12 @@
       #studentPhoto{width:220px;height:220px;object-fit:cover;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,.2);background:#f2f2f2}
       #quiz-controls{display:grid;grid-template-columns:1fr auto;gap:8px;width:100%}
       #student-name-guess{padding:12px 14px;border-radius:10px;border:1px solid #ddd;width:100%;font-size:16px}
+      #quiz-suggest{width:100%;min-height:26px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:#666}
+      .suggest-chip{padding:3px 9px;border-radius:999px;background:#f0f0f0;color:#333;cursor:pointer;border:1px solid transparent}
+      .suggest-chip:hover{background:#e2e2e2}
+      .suggest-chip.single{background:#d9f5df;border-color:#2e9e4a;color:#14532d;font-weight:700}
+      .suggest-more{color:#999}
+      #student-names-grid.filtering .name-btn:not(.matches){opacity:.25}
       .quiz-btn{padding:12px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:600;background:#111;color:#fff;transition:transform .06s ease, box-shadow .2s ease}
       .quiz-btn:active{transform:translateY(1px)}
       .quiz-btn.secondary{background:#eee;color:#111}
@@ -165,6 +171,7 @@
                  placeholder="First name?" autocomplete="off" />
           <button id="guess-btn" class="quiz-btn">Guess <span class="enter-icon">↵</span></button>
         </div>
+        <div id="quiz-suggest" aria-live="polite"></div>
         <div id="quiz-actions">
           <button id="next-btn" class="quiz-btn secondary" title="Show another student">Next</button>
           <button id="reveal-btn" class="quiz-btn secondary" title="Reveal the answer">Reveal</button>
@@ -230,6 +237,7 @@
     const scoreTotalEl = document.getElementById('score-total');
     const progressEl = document.getElementById('quiz-progress');
     const namesGridEl = document.getElementById('student-names-grid');
+    const suggestEl = document.getElementById('quiz-suggest');
     document.getElementById('close-quiz').addEventListener('click', closeOverlay);
 
     const restoreBtn = document.getElementById('restore-names');
@@ -352,6 +360,7 @@
             makeSecondary(nextBtn);
             awaitingGuess = true;
             namesGridEl.classList.remove('locked');
+            updateSuggestions();
             revealActsAsNext = false;
             revealBtn.textContent = 'Reveal';
             revealBtn.title = 'Reveal the answer';
@@ -362,6 +371,7 @@
             makeSecondary(guessBtn);
             awaitingGuess = false;
             namesGridEl.classList.add('locked');
+            updateSuggestions();
             // Name is now known (guess, click or reveal): Reveal button works as Next
             revealActsAsNext = true;
             revealedAt = Date.now();
@@ -373,6 +383,46 @@
     function clearNameHighlights() {
         nameButtons.forEach((btn) => btn.classList.remove('is-correct', 'is-wrong'));
     }
+
+    // ==== Live suggestions while typing ======================================
+    const MAX_CHIPS = 6;
+    function visibleFirstNames() {
+        return [...nameButtons.values()].map((btn) => btn.textContent);
+    }
+    function matchingNames(typed) {
+        const t = normalize(typed);
+        if (!t) return [];
+        return visibleFirstNames().filter((n) => normalize(n).startsWith(t));
+    }
+    function updateSuggestions() {
+        const typed = nameInput.value;
+        const matches = awaitingGuess ? matchingNames(typed) : [];
+        suggestEl.textContent = '';
+        namesGridEl.classList.toggle('filtering', awaitingGuess && normalize(typed).length > 0);
+        nameButtons.forEach((btn, key) => {
+            btn.classList.toggle('matches', matches.some((n) => normalize(n) === key));
+        });
+        if (!awaitingGuess || !normalize(typed)) return;
+        if (!matches.length) {
+            suggestEl.textContent = 'No name starts with that';
+            return;
+        }
+        matches.slice(0, MAX_CHIPS).forEach((n) => {
+            const chip = document.createElement('span');
+            chip.className = 'suggest-chip' + (matches.length === 1 ? ' single' : '');
+            chip.textContent = n;
+            chip.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the field
+            chip.addEventListener('click', () => { nameInput.value = n; checkAnswer(); });
+            suggestEl.appendChild(chip);
+        });
+        if (matches.length > MAX_CHIPS) {
+            const more = document.createElement('span');
+            more.className = 'suggest-more';
+            more.textContent = `+${matches.length - MAX_CHIPS} more`;
+            suggestEl.appendChild(more);
+        }
+    }
+    nameInput.addEventListener('input', updateSuggestions);
 
     function highlightCorrectName() {
         nameButtons.get(normalize(currentStudent.first))?.classList.add('is-correct');
@@ -426,6 +476,8 @@
     // Typed answer: first name only, first 4 letters are enough
     function checkAnswer() {
         if (!currentStudent || !awaitingGuess) return;
+        const matches = matchingNames(nameInput.value);
+        if (matches.length === 1) nameInput.value = matches[0]; // complete the single match
         const guessFirst = normalize(nameInput.value).split(/\s+/)[0];
         const firstName = normalize(currentStudent.first);
         scoreTotal += 1;
